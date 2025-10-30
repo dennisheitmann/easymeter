@@ -157,9 +157,9 @@ def read_meter():
                         print(message_str)
                         print(f"--- ------------ ---")
                         # Use the robust extraction function. If the value isn't found, it returns None.
-                        V1_8_0 = extract_sml_reading(message_str, r'77070100010800ff[a-f0-9]*?621e52ff59', 16)
-                        V2_8_0 = extract_sml_reading(message_str, r'77070100020800ff[a-f0-9]*?621e52ff59', 16)
-                        V1_7_0 = extract_sml_reading(message_str, r'77070100100700ff[a-f0-9]*?621b520055', 8)
+                        V1_8_0 = extract_sml_reading(message_str, r'77070100010800ff[a-f0-9]*?621e52..59', 16)
+                        V2_8_0 = extract_sml_reading(message_str, r'77070100020800ff[a-f0-9]*?621e52..59', 16)
+                        V1_7_0 = extract_sml_reading(message_str, r'77070100100700ff[a-f0-9]*?621b52..55', 8)
                         # Convert to signed integers
                         if V1_8_0 is not None:
                             # 1.8.0 is an 8-byte value -> 64 bits
