@@ -126,8 +126,60 @@ def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optiona
         return int(hex_value, 16)
     return None
 
-def read_meter():
+def process_datagram(reading):
+    # Strip End Marker Bytes
+    bytes_to_check = reading[:-5] 
+    received_crc_bytes = bytes_to_check[-2:]
+    received_crc_int = int.from_bytes(received_crc_bytes, byteorder='little')
+    # Calculate CRC (on all bytes EXCEPT the last 2 CRC bytes)
+    calculated_crc_int = sml.crc(bytes_to_check[:-2])
+    # Only if CRC matches
+    if calculated_crc_int == received_crc_int:
+        if CONFIG['utc']:
+            ts = datetime.datetime.now(datetime.UTC)
+        else:
+            ts = datetime.datetime.now()
+        ts_str = ts.strftime(TS_FORMAT)
+        message_str = str(binascii.hexlify(reading), encoding='utf-8')
+        if message_str:
+            print(f"--- SML Datagram ---")
+            print(ts_str)
+            print(message_str)
+            print(f"--- ------------ ---")
+            # Use the robust extraction function. If the value isn't found, it returns None.
+            V1_8_0 = extract_sml_reading(message_str, r'77070100010800ff[a-f0-9]*?621e52..59', 16)
+            V2_8_0 = extract_sml_reading(message_str, r'77070100020800ff[a-f0-9]*?621e52..59', 16)
+            V1_7_0 = extract_sml_reading(message_str, r'77070100100700ff[a-f0-9]*?621b52..55', 8)
+            # Convert to signed integers
+            if V1_8_0 is not None:
+                # 1.8.0 is an 8-byte value -> 64 bits
+                V1_8_0 = signed_conversion(V1_8_0, 64) 
+            if V2_8_0 is not None:
+                # 2.8.0 is an 8-byte value -> 64 bits
+                V2_8_0 = signed_conversion(V2_8_0, 64) 
+            if V1_7_0 is not None:
+                # 1.7.0 is a 4-byte value -> 32 bits
+                V1_7_0 = signed_conversion(V1_7_0, 32)
+            # Handle the case where the reading is None
+            V1_8_0_str = str(int(V1_8_0)/10000.0) if V1_8_0 is not None else 'None'
+            V2_8_0_str = str(int(V2_8_0)/10000.0) if V2_8_0 is not None else 'None'
+            V1_7_0_str = str(V1_7_0) if V1_7_0 is not None else 'None'
+            if V1_8_0_str != 'None':
+                print('1.8.0: ' + V1_8_0_str + ' kWh')
+            if V2_8_0_str != 'None':
+                print('2.8.0: ' + V2_8_0_str + ' kWh')
+            if V1_7_0_str != 'None':
+                print('1.7.0: ' + V1_7_0_str + ' W')
+            print(f"--- ------------ ---")
+    else:
+        logger.error("CRC mismatch")
+
+def read_meter(test_message=None):
     logger = logging.getLogger(__name__)
+    if test_message:
+        # If in test mode, simply process the provided message once
+        process_datagram(test_message)
+        return
     while True:
         try:
             success, reading = read()
@@ -137,55 +189,24 @@ def read_meter():
                     logger.error("Datagram too short for CRC check.")
                     time.sleep(1)
                     continue
-                # Strip End Marker Bytes
-                bytes_to_check = reading[:-5] 
-                received_crc_bytes = bytes_to_check[-2:]
-                received_crc_int = int.from_bytes(received_crc_bytes, byteorder='little')
-                # Calculate CRC (on all bytes EXCEPT the last 2 CRC bytes)
-                calculated_crc_int = sml.crc(bytes_to_check[:-2])
-                # Only if CRC matches
-                if calculated_crc_int == received_crc_int:
-                    if CONFIG['utc']:
-                        ts = datetime.datetime.now(datetime.UTC)
-                    else:
-                        ts = datetime.datetime.now()
-                    ts_str = ts.strftime(TS_FORMAT)
-                    message_str = str(binascii.hexlify(reading), encoding='utf-8')
-                    if message_str:
-                        print(f"--- SML Datagram ---")
-                        print(ts_str)
-                        print(message_str)
-                        print(f"--- ------------ ---")
-                        # Use the robust extraction function. If the value isn't found, it returns None.
-                        V1_8_0 = extract_sml_reading(message_str, r'77070100010800ff[a-f0-9]*?621e52..59', 16)
-                        V2_8_0 = extract_sml_reading(message_str, r'77070100020800ff[a-f0-9]*?621e52..59', 16)
-                        V1_7_0 = extract_sml_reading(message_str, r'77070100100700ff[a-f0-9]*?621b52..55', 8)
-                        # Convert to signed integers
-                        if V1_8_0 is not None:
-                            # 1.8.0 is an 8-byte value -> 64 bits
-                            V1_8_0 = signed_conversion(V1_8_0, 64) 
-                        if V2_8_0 is not None:
-                            # 2.8.0 is an 8-byte value -> 64 bits
-                            V2_8_0 = signed_conversion(V2_8_0, 64) 
-                        if V1_7_0 is not None:
-                            # 1.7.0 is a 4-byte value -> 32 bits
-                            V1_7_0 = signed_conversion(V1_7_0, 32)
-                        # Handle the case where the reading is None
-                        V1_8_0_str = str(int(V1_8_0)/10000.0) if V1_8_0 is not None else 'None'
-                        V2_8_0_str = str(int(V2_8_0)/10000.0) if V2_8_0 is not None else 'None'
-                        V1_7_0_str = str(V1_7_0) if V1_7_0 is not None else 'None'
-                        if V1_8_0_str != 'None':
-                            print('1.8.0: ' + V1_8_0_str + ' kWh')
-                        if V2_8_0_str != 'None':
-                            print('2.8.0: ' + V2_8_0_str + ' kWh')
-                        if V1_7_0_str != 'None':
-                            print('1.7.0: ' + V1_7_0_str + ' W')
-                        print(f"--- ------------ ---")
-                else:
-                    logger.error("CRC mismatch")
+                process_datagram(reading)
         except Exception as e:
             logger.exception(f'Error in worker_read_meter: {e}')
             time.sleep(5)
 
 if __name__ == '__main__':
-    read_meter()
+    if len(sys.argv) > 1:
+        # Command-line argument provided: Assume it's the hex message string
+        hex_message_str = sys.argv[1]
+        try:
+            # Convert hex string argument back to a bytes object
+            test_bytes = binascii.unhexlify(hex_message_str)
+            print(f"*** Running in Testing Mode with {len(test_bytes)} bytes ***")
+            read_meter(test_bytes)
+        except binascii.Error:
+            print(f"Error: Invalid hex string provided.")
+            sys.exit(1)
+    else:
+        # No command-line argument: Run in production serial reading mode
+        print("*** Running in Production Mode (Serial Port) ***")
+        read_meter()
