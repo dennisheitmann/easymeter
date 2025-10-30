@@ -164,15 +164,12 @@ def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False):
                 # 1.7.0 is a 4-byte value -> 32 bits
                 V1_7_0 = signed_conversion(V1_7_0, 32)
             # Handle the case where the reading is None
-            V1_8_0_str = str(int(V1_8_0)/10000.0) if V1_8_0 is not None else 'None'
-            V2_8_0_str = str(int(V2_8_0)/10000.0) if V2_8_0 is not None else 'None'
-            V1_7_0_str = str(V1_7_0) if V1_7_0 is not None else 'None'
-            if V1_8_0_str != 'None':
-                print('1.8.0: ' + V1_8_0_str + ' kWh')
-            if V2_8_0_str != 'None':
-                print('2.8.0: ' + V2_8_0_str + ' kWh')
-            if V1_7_0_str != 'None':
-                print('1.7.0: ' + V1_7_0_str + ' W')
+            if V1_8_0 != None:
+                print('1.8.0: ' + str(V1_8_0))
+            if V2_8_0 != None:
+                print('2.8.0: ' + str(V2_8_0))
+            if V1_7_0 != None:
+                print('1.7.0: ' + str(V1_7_0))
             print(f"--- ------------ ---")
     else:
         logger.error("CRC mismatch")
