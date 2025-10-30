@@ -123,8 +123,7 @@ def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optiona
         return int(hex_value, 16)
     return None
 
-def process_datagram(reading):
-    logger = logging.getLogger(__name__)
+def process_datagram(logger: logging.Logger, reading: bytes):
     # Strip End Marker Bytes
     bytes_to_check = reading[:-5] 
     received_crc_bytes = bytes_to_check[-2:]
@@ -176,7 +175,7 @@ def read_meter(test_message=None):
     logger = logging.getLogger(__name__)
     if test_message:
         # If in test mode, simply process the provided message once
-        process_datagram(test_message)
+        process_datagram(logger, test_message)
         return
     while True:
         try:
@@ -187,7 +186,7 @@ def read_meter(test_message=None):
                     logger.error("Datagram too short for CRC check.")
                     time.sleep(1)
                     continue
-                process_datagram(reading)
+                process_datagram(logger, reading)
         except Exception as e:
             logger.exception(f'Error in worker_read_meter: {e}')
             time.sleep(5)
