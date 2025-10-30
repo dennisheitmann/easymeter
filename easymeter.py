@@ -9,6 +9,7 @@ import json
 import datetime
 import os
 import binascii
+from typing import Tuple, Optional, Union, Any
 
 CONFIG = {'dev': '/dev/ttyUSB0',
           'loglevel': 'ERROR',
@@ -23,28 +24,160 @@ CONFIG = {'dev': '/dev/ttyUSB0',
                    'qos': 0 } ,
          } 
 
-KEYWORDS = {
-    'A+': {'keyword': '1-0:1.8.0', 'dtype': float}, # Meter reading import
-    'A-': {'keyword': '1-0:2.8.0', 'dtype': float}, # Meter reading export
-    'L1': {'keyword': '1-0:21.7.255', 'dtype': float}, # Power L1
-    'L2': {'keyword': '1-0:41.7.255', 'dtype': float}, # Power L2
-    'L3': {'keyword': '1-0:61.7.255', 'dtype': float}, # Power L3
-    'In': {'keyword': '1-0:1.7.255', 'dtype': float}, # Power total in
-    'SERIAL': {'keyword': '0-0:96.1.255', 'dtype': str}, # Serial number
-    'Out': {'keyword': '1-0:1.7.255', 'dtype': float}, # Power total out
-}
-
 TS_FORMAT = '%Y-%m-%d %H:%M:%S'
 
-def read():
-    with serial.Serial(port=CONFIG['dev'], baudrate=9600, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, timeout=2.5, exclusive=True) as ser:
-        #reading = ser.read_until(b'\x1b\x1b\x1b\x1b\03')
-        reading = ser.read(312)
-        ser.reset_input_buffer()
-        if reading.startswith(b'\x1b\x1b\x1b\x1b\x01\x01\x01\x01'):
-            return (True, reading)
-        time.sleep(0.5) #wait to reach the right cycle
-        return (False, reading)
+def signed_conversion(value: int, bits: int) -> int:
+    """ Converts an unsigned integer (from hex) to a signed integer using two's complement. """
+    if value is None:
+        return None
+    # Check if the MSB is set (i.e., value is negative)
+    if value & (1 << (bits - 1)):
+        # Calculate the negative value: value - 2^bits
+        return value - (1 << bits)
+    return value
+
+# CRC class definition
+class SmlCrc:
+    """ Class for Smart Message Language (SML) CRC calculation. """
+    def __init__(self):
+        self.crc_table = [] 
+        self.crc_init()
+    def crc_init(self):
+        """ Init the crc look-up table for byte-wise crc calculation. """
+        polynom = 0x8408     # CCITT Polynom reflected
+        self.crc_table = []
+        for byte in range(256):
+            crcsum = byte
+            for bit in range(8):  # for all 8 bits
+                if crcsum & 0x01:
+                    crcsum = (crcsum >> 1) ^ polynom
+                else:
+                    crcsum >>= 1
+            self.crc_table.append(crcsum)
+    def crc(self, data):
+        """ Calculate CCITT-CRC16 checksum byte by byte. """
+        crcsum = 0xFFFF
+        for byte in data:
+            idx = byte ^ (crcsum & 0xFF)
+            crcsum = self.crc_table[idx] ^ (crcsum >> 8)
+        return crcsum ^ 0xFFFF
+        
+sml = SmlCrc()
+
+# Define the SML markers
+SML_START = b'\x1b\x1b\x1b\x1b\x01\x01\x01\x01'
+SML_END = b'\x1b\x1b\x1b\x1b\x01'
+
+def read() -> Tuple[bool, bytes]:
+    """
+    Reads a complete SML datagram by searching for its start and end markers.
+    """
+    try:
+        with serial.Serial(
+            port=CONFIG['dev'],
+            baudrate=9600,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            bytesize=serial.EIGHTBITS,
+            timeout=5.0,  # Increased timeout for reliable reading
+            exclusive=True
+        ) as ser:
+            # Search for the SML START sequence
+            # Read enough data to ensure the buffer is current, looking for the start
+            partial_reading = ser.read(100)
+            if not partial_reading:
+                return (False, b"Error: No data read from serial port.")
+            # Find the position of the actual SML start marker
+            start_index = partial_reading.find(SML_START)
+            if start_index == -1:
+                # Did not find the start sequence in the initial buffer check
+                time.sleep(0.25)
+                ser.reset_input_buffer()
+                return (False, b"No SML start detected")
+            # Extract and store the starting chunk
+            # The start sequence might be preceded by garbage, so capture from the start index
+            start_data = partial_reading[start_index:]
+            # Read the rest of the message until the SML END sequence
+            # We must use read_until on the *rest* of the message after the start sequence.
+            # We use an alternative approach for robustness: read_until the END marker.
+            # Flush existing data if any, and read everything up to the END marker
+            # This read will include the END marker itself.
+            body_and_end = ser.read_until(SML_END)
+            if not body_and_end.endswith(SML_END):
+                # The read_until timed out before finding the END marker.
+                return (False, start_data + body_and_end)
+            # Assemble the complete datagram
+            complete_datagram = start_data + body_and_end
+            # Reset buffer for the next call
+            ser.reset_input_buffer()
+            return (True, complete_datagram)
+    except serial.SerialException as e:
+        return (False, str(e).encode('utf-8'))
+
+def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optional[int]:
+    """
+    Finds the 8/16-digit (4/8-byte) hex value associated with an OBIS code
+    and converts it to a decimal integer.
+    """
+    # Pattern: OBIS ID + up to 30 hex characters (variable header) + 8/16 hex characters (the value)
+    pattern = obis_pattern + r'([a-f0-9]{' + str(length) + '})'
+    match = re.search(pattern, message)
+    if match:
+        hex_value = match.group(1)
+        return int(hex_value, 16)
+    return None
+
+def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, crcoffset: int = -5):
+    # crcoffset: Easymeter = 0, Iskra = -5
+    # Strip End Marker Bytes
+    bytes_to_check = reading[:crcoffset] 
+    received_crc_bytes = bytes_to_check[-2:]
+    received_crc_int = int.from_bytes(received_crc_bytes, byteorder='little')
+    # Calculate CRC (on all bytes EXCEPT the last 2 CRC bytes)
+    calculated_crc_int = sml.crc(bytes_to_check[:-2])
+    # Process if CRC check is disabled (crc=False) OR if CRC check is enabled and it matches.
+    crc_ok_or_check_disabled = (not crc) or (calculated_crc_int == received_crc_int)
+    # If the CRC check is enabled and failed, log the error and stop.
+    if crc and calculated_crc_int != received_crc_int:
+        logger.error(f"CRC Mismatch! Received: {received_crc_int:04X}, Calculated: {calculated_crc_int:04X}")
+        return # Stop execution if CRC fails and check is mandatory
+    # Proceed with Data Processing (Unconditional if crc=False, or if CRC matched)
+    if crc_ok_or_check_disabled:
+        if CONFIG['utc']:
+            ts = datetime.datetime.now(datetime.UTC)
+        else:
+            ts = datetime.datetime.now()
+        ts_str = ts.strftime(TS_FORMAT)
+        message_str = str(binascii.hexlify(reading), encoding='utf-8')
+        if message_str:
+            print(f"--- SML Datagram ---")
+            print(ts_str)
+            print(message_str)
+            print(f"--- ------------ ---")
+            # Use the robust extraction function. If the value isn't found, it returns None.
+            V1_8_0 = extract_sml_reading(message_str, r'77070100010800ff[a-f0-9]*?621e52..59', 16)
+            V2_8_0 = extract_sml_reading(message_str, r'77070100020800ff[a-f0-9]*?621e52..59', 16)
+            V1_7_0 = extract_sml_reading(message_str, r'77070100100700ff[a-f0-9]*?621b52..55', 8)
+            # Convert to signed integers
+            if V1_8_0 is not None:
+                # 1.8.0 is an 8-byte value -> 64 bits
+                V1_8_0 = signed_conversion(V1_8_0, 64) 
+            if V2_8_0 is not None:
+                # 2.8.0 is an 8-byte value -> 64 bits
+                V2_8_0 = signed_conversion(V2_8_0, 64) 
+            if V1_7_0 is not None:
+                # 1.7.0 is a 4-byte value -> 32 bits
+                V1_7_0 = signed_conversion(V1_7_0, 32)
+            # Handle the case where the reading is None
+            if V1_8_0 != None:
+                print('1.8.0: ' + str(V1_8_0))
+            if V2_8_0 != None:
+                print('2.8.0: ' + str(V2_8_0))
+            if V1_7_0 != None:
+                print('1.7.0: ' + str(V1_7_0))
+            #print(f"--- ------------ ---")
+    else:
+        logger.error("CRC mismatch")
 
 def worker_read_meter(task_queues):
     task_queues = task_queues[:-1]  #remove last entry because is a list with all other queues (=the argument for this worker)
@@ -53,14 +186,16 @@ def worker_read_meter(task_queues):
         try:
             success, reading = read()
             logger.debug(f'reading: {reading}, len: {len(reading)}')
-            if success: # and len(reading) == 270:
+            if success:
                 if CONFIG['utc']:
                     ts = datetime.datetime.utcnow()
                 else:
                     ts = datetime.datetime.now()
                 reading_dict ={'ts': ts.strftime(TS_FORMAT)} 
                 reading_dict['message'] = str(binascii.hexlify(reading), encoding='utf-8')
-                #put the reading_dict into all publishing queues
+                # process datagram here
+                # process_datagram(logger, reading)
+                # put the reading_dict into all publishing queues
                 for queue in task_queues:
                     queue.put(reading_dict)
             else:
@@ -79,7 +214,6 @@ def worker_publish_mqtt(task_queue):
             client.connect(host=CONFIG['mqtt']['host'],port=CONFIG['mqtt']['port'],keepalive=CONFIG['mqtt']['keepalive'],bind_address="")
  
     def mqtt_publish(payload):
-        #print(json.dumps(reading))
         mqtt_connect()
         return client.publish(topic=CONFIG['mqtt']['topic'], 
                               payload=json.dumps(reading),
@@ -129,16 +263,3 @@ def run():
 
 if __name__ == '__main__':
     run()
-
-
-""" 
-/ESY5Q3DA1004 V3.02
-
-1-0:0.0.0*255(0273011003684)
-1-0:1.8.0*255(00026107.7034231*kWh)
-1-0:21.7.255*255(000200.13*W)
-1-0:41.7.255*255(000122.31*W)
-1-0:61.7.255*255(000014.01*W)
-1-0:1.7.255*255(000336.45*W)
-1-0:96.5.5*255(82)
-0-0:96.1.255*255(1ESY1011003684) """
