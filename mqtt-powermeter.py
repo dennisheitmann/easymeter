@@ -75,7 +75,8 @@ def on_message(client, userdata, msg):
     for topic in topics:
         if topic in msg.topic:
             message = json.loads(msg.payload.decode('ascii'))['message']
-            #print(message)
+            # cut end message bytes
+            message = message[:-10]
             # reverse order for crc comparison
             c_message = message[-2] + message[-1] + message[-4] + message[-3] 
             c_int = int(('0x' + c_message), 16)
@@ -95,21 +96,25 @@ def on_message(client, userdata, msg):
                     if V1_8_0 < 99999:
                         save_to_db('HOME/POWER/powermeter/1_8_0', V1_8_0)
                         V1_8_0_prev_timestamp = datetime.datetime.utcnow()
+                        client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
                         #print('1.8.0: ' + str(V1_8_0))
                 if V2_8_0 != V2_8_0_prev:
                     if V2_8_0 < 99999:
                         save_to_db('HOME/POWER/powermeter/2_8_0', V2_8_0)
                         V2_8_0_prev_timestamp = datetime.datetime.utcnow()
+                        client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
                         #print('2.8.0: ' + str(V2_8_0))
                 if V1_8_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=5):
                     if V1_8_0 < 99999:
                         save_to_db('HOME/POWER/powermeter/1_8_0', V1_8_0)
                         V1_8_0_prev_timestamp = datetime.datetime.utcnow()
+                        client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
                         #print('1.8.0: ' + str(V1_8_0))
                 if V2_8_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=5):
                     if V2_8_0 < 99999:
                         save_to_db('HOME/POWER/powermeter/2_8_0', V2_8_0)
                         V2_8_0_prev_timestamp = datetime.datetime.utcnow()
+                        client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
                         #print('2.8.0: ' + str(V2_8_0))
 
 client = paho.mqtt.client.Client()
