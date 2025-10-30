@@ -208,5 +208,5 @@ if __name__ == '__main__':
             sys.exit(1)
     else:
         # No command-line argument: Run in production serial reading mode
-        print("*** Running in Production Mode (Serial Port) ***")
+        print("*** Running in Production Mode (USB Serial Port) ***")
         read_meter()
