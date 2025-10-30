@@ -123,9 +123,10 @@ def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optiona
         return int(hex_value, 16)
     return None
 
-def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False):
+def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, crcoffset: int = -5):
+    # crcoffset: Easymeter = 0, Iskra = -5
     # Strip End Marker Bytes
-    bytes_to_check = reading[:-5] 
+    bytes_to_check = reading[:crcoffset] 
     received_crc_bytes = bytes_to_check[-2:]
     received_crc_int = int.from_bytes(received_crc_bytes, byteorder='little')
     # Calculate CRC (on all bytes EXCEPT the last 2 CRC bytes)
