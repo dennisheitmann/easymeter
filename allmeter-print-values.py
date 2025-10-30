@@ -130,8 +130,8 @@ def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optiona
         return int(hex_value, 16)
     return None
 
-def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, crcoffset: int = -5):
-    # crcoffset: Easymeter = 0, Iskra = -5
+def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, crcoffset: int = -8):
+    # crcoffset: Easymeter = 0, Iskra = -8
     # Strip End Marker Bytes
     bytes_to_check = reading[:crcoffset] 
     received_crc_bytes = bytes_to_check[-2:]
