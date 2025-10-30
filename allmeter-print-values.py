@@ -174,7 +174,7 @@ def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False):
     else:
         logger.error("CRC mismatch")
 
-def read_meter(test_message=None):
+def read_meter(test_message: bytes = None):
     logger = logging.getLogger(__name__)
     if test_message:
         # If in test mode, simply process the provided message once
