@@ -35,11 +35,9 @@ def signed_conversion(value: int, bits: int) -> int:
 # CRC class definition
 class SmlCrc:
     """ Class for Smart Message Language (SML) CRC calculation. """
-
     def __init__(self):
         self.crc_table = [] 
         self.crc_init()
-
     def crc_init(self):
         """ Init the crc look-up table for byte-wise crc calculation. """
         polynom = 0x8408     # CCITT Polynom reflected
@@ -52,7 +50,6 @@ class SmlCrc:
                 else:
                     crcsum >>= 1
             self.crc_table.append(crcsum)
-
     def crc(self, data):
         """ Calculate CCITT-CRC16 checksum byte by byte. """
         crcsum = 0xFFFF
@@ -127,6 +124,7 @@ def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optiona
     return None
 
 def process_datagram(reading):
+    logger = logging.getLogger(__name__)
     # Strip End Marker Bytes
     bytes_to_check = reading[:-5] 
     received_crc_bytes = bytes_to_check[-2:]
