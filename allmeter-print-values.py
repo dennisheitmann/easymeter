@@ -102,8 +102,15 @@ def read() -> Tuple[bool, bytes]:
             if not body_and_end.endswith(SML_END):
                 # The read_until timed out before finding the END marker.
                 return (False, start_data + body_and_end)
+            # Read the LAST 3 BYTES (The trailing CRC + Final 1A marker)
+            # This read is non-blocking and will return immediately with whatever is available, 
+            # up to 3 bytes. Since the meter sends them immediately, we expect 3 bytes.
+            last_bytes = ser.read(3)
+            if len(last_bytes) != 3:
+                # If we didn't get 3 bytes, the telegram might be incomplete or malformed.
+                return (False, start_data + body_and_end + last_bytes)
             # Assemble the complete datagram
-            complete_datagram = start_data + body_and_end
+            complete_datagram = start_data + body_and_end + last_bytes
             # Reset buffer for the next call
             ser.reset_input_buffer()
             return (True, complete_datagram)
