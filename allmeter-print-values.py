@@ -123,15 +123,21 @@ def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optiona
         return int(hex_value, 16)
     return None
 
-def process_datagram(logger: logging.Logger, reading: bytes):
+def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False):
     # Strip End Marker Bytes
     bytes_to_check = reading[:-5] 
     received_crc_bytes = bytes_to_check[-2:]
     received_crc_int = int.from_bytes(received_crc_bytes, byteorder='little')
     # Calculate CRC (on all bytes EXCEPT the last 2 CRC bytes)
     calculated_crc_int = sml.crc(bytes_to_check[:-2])
-    # Only if CRC matches
-    if calculated_crc_int == received_crc_int:
+    # Process if CRC check is disabled (crc=False) OR if CRC check is enabled and it matches.
+    crc_ok_or_check_disabled = (not crc) or (calculated_crc_int == received_crc_int)
+    # If the CRC check is enabled and failed, log the error and stop.
+    if crc and calculated_crc_int != received_crc_int:
+        logger.error(f"CRC Mismatch! Received: {received_crc_int:04X}, Calculated: {calculated_crc_int:04X}")
+        return # Stop execution if CRC fails and check is mandatory
+    # Proceed with Data Processing (Unconditional if crc=False, or if CRC matched)
+    if crc_ok_or_check_disabled:
         if CONFIG['utc']:
             ts = datetime.datetime.now(datetime.UTC)
         else:
