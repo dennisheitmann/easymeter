@@ -127,7 +127,7 @@ def extract_sml_reading(message: str, obis_pattern: str, length: int) -> Optiona
         return int(hex_value, 16)
     return None
 
-def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, crcoffset: int = -5):
+def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = True, crcoffset: int = -5):
     # crcoffset: Easymeter = 0, Iskra = -5
     # Strip End Marker Bytes
     bytes_to_check = reading[:crcoffset] 
@@ -199,7 +199,7 @@ def worker_read_meter(task_queues):
                 for queue in task_queues:
                     queue.put(reading_dict)
             else:
-                logger.error(f'reading failed {reading}')
+                logger.warning(f'reading failed {reading}')
         except:
             logger.exception('Error in worker_read_meter')
 
