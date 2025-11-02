@@ -142,41 +142,47 @@ def on_message(client, userdata, msg):
                 #print(V2_8_0)
                 #print(V16_7_0)
                 if V1_8_0 != V1_8_0_prev:
-                    if V1_8_0 < 99999:
-                        save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
-                        V1_8_0_prev_timestamp = datetime.datetime.utcnow()
-                        client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
-                        #print('1.8.0: ' + str(V1_8_0))
+                    if V1_8_0 is not None:
+                        if V1_8_0 < 99999:
+                            save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
+                            V1_8_0_prev_timestamp = datetime.datetime.utcnow()
+                            client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
+                            #print('1.8.0: ' + str(V1_8_0))
                 if V2_8_0 != V2_8_0_prev:
-                    if V2_8_0 < 99999:
-                        save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
-                        V2_8_0_prev_timestamp = datetime.datetime.utcnow()
-                        client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
-                        #print('2.8.0: ' + str(V2_8_0))
+                    if V2_8_0 is not None:
+                        if V2_8_0 < 99999:
+                            save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
+                            V2_8_0_prev_timestamp = datetime.datetime.utcnow()
+                            client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
+                            #print('2.8.0: ' + str(V2_8_0))
                 if V16_7_0 != V16_7_0_prev:
-                    if V16_7_0 < 99999:
-                        save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
-                        V16_7_0_prev_timestamp = datetime.datetime.utcnow()
-                        client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
-                        #print('16.7.0: ' + str(V16_7_0))
+                    if V16_7_0 is not None:
+                        if V16_7_0 < 99999:
+                            save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
+                            V16_7_0_prev_timestamp = datetime.datetime.utcnow()
+                            client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
+                            #print('16.7.0: ' + str(V16_7_0))
                 if V1_8_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=1):
-                    if V1_8_0 < 99999:
-                        save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
-                        V1_8_0_prev_timestamp = datetime.datetime.utcnow()
-                        client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
-                        #print('1.8.0: ' + str(V1_8_0))
+                    if V1_8_0 is not None:
+                        if V1_8_0 < 99999:
+                            save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
+                            V1_8_0_prev_timestamp = datetime.datetime.utcnow()
+                            client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
+                            #print('1.8.0: ' + str(V1_8_0))
                 if V2_8_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=1):
-                    if V2_8_0 < 99999:
-                        save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
-                        V2_8_0_prev_timestamp = datetime.datetime.utcnow()
-                        client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
-                        #print('2.8.0: ' + str(V2_8_0))
+                    if V2_8_0 is not None:
+                        if V2_8_0 < 99999:
+                            save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
+                            V2_8_0_prev_timestamp = datetime.datetime.utcnow()
+                            client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
+                            #print('2.8.0: ' + str(V2_8_0))
                 if V16_7_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=1):
-                    if V16_7_0 < 99999:
-                        save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
-                        V16_7_0_prev_timestamp = datetime.datetime.utcnow()
-                        client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
-                        #print('16.7.0: ' + str(V16_7_0))
+                    if V16_7_0 is not None:
+                        if V16_7_0 < 99999:
+                            save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
+                            V16_7_0_prev_timestamp = datetime.datetime.utcnow()
+                            client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
+                            #print('16.7.0: ' + str(V16_7_0))
 
 client = paho.mqtt.client.Client()
 client.username_pw_set(username, password)
