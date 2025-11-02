@@ -152,7 +152,7 @@ def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, 
             # Use the robust extraction function. If the value isn't found, it returns None.
             V1_8_0 = extract_sml_reading(message_str, r'77070100010800ff[a-f0-9]*?621e52..59', 16)
             V2_8_0 = extract_sml_reading(message_str, r'77070100020800ff[a-f0-9]*?621e52..59', 16)
-            V1_7_0 = extract_sml_reading(message_str, r'77070100100700ff[a-f0-9]*?621b52..55', 8)
+            V16_7_0 = extract_sml_reading(message_str, r'77070100100700ff[a-f0-9]*?621b52..55', 8)
             # Convert to signed integers
             if V1_8_0 is not None:
                 # 1.8.0 is an 8-byte value -> 64 bits
@@ -160,16 +160,16 @@ def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, 
             if V2_8_0 is not None:
                 # 2.8.0 is an 8-byte value -> 64 bits
                 V2_8_0 = signed_conversion(V2_8_0, 64) 
-            if V1_7_0 is not None:
+            if V16_7_0 is not None:
                 # 1.7.0 is a 4-byte value -> 32 bits
-                V1_7_0 = signed_conversion(V1_7_0, 32)
+                V16_7_0 = signed_conversion(V16_7_0, 32)
             # Handle the case where the reading is None
             if V1_8_0 != None:
                 print('1.8.0: ' + str(V1_8_0))
             if V2_8_0 != None:
                 print('2.8.0: ' + str(V2_8_0))
-            if V1_7_0 != None:
-                print('1.7.0: ' + str(V1_7_0))
+            if V16_7_0 != None:
+                print('1.7.0: ' + str(V16_7_0))
             print(f"--- ------------ ---")
     else:
         logger.error("CRC mismatch")
