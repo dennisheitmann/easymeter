@@ -5,22 +5,32 @@ import csv
 import json
 import time
 import datetime
+from typing import Optional
 from influxdb import InfluxDBClient
-import paho.mqtt.client
+import paho.mqtt.client as mqtt # Aliased for cleaner Paho v2 setup
 
+# ------------------------------------------------------------------------
+# CONFIGURATION & GLOBALS
+# ------------------------------------------------------------------------
 username = 'user'
 password = 'pass'
 topic_tree = 'HOME/POWER/#'
 topics = ['powermeter']
+
 V1_8_0 = 0
 V1_8_0_long = 0
 V2_8_0 = 0
 V2_8_0_long = 0
 V16_7_0 = 0
-V1_8_0_prev_timestamp = datetime.datetime.utcnow()
-V2_8_0_prev_timestamp = datetime.datetime.utcnow()
-V16_7_0_prev_timestamp = datetime.datetime.utcnow()
 
+# DATETIME UPDATE: Replaced deprecated utcnow() with aware UTC datetime
+V1_8_0_prev_timestamp = datetime.datetime.now(datetime.UTC)
+V2_8_0_prev_timestamp = datetime.datetime.now(datetime.UTC)
+V16_7_0_prev_timestamp = datetime.datetime.now(datetime.UTC)
+
+# ------------------------------------------------------------------------
+# UTILITY CLASSES & FUNCTIONS
+# ------------------------------------------------------------------------
 class SmlCrc:
     """ Class for Smart Message Language (SML) CRC calculation. """
 
@@ -74,11 +84,15 @@ def signed_conversion(value: int, bits: int) -> int:
         return value - (1 << bits)
     return value
 
+# ------------------------------------------------------------------------
+# DATABASE AND MQTT
+# ------------------------------------------------------------------------
 # Set up a client for InfluxDB
 dbclient = InfluxDBClient('127.0.0.1', 8086, 'root', 'root', 'all-data')
 
 def save_to_db(topic: str, val: float):
-    valtime = datetime.datetime.utcnow()
+    # DATETIME UPDATE: Modern aware UTC timestamp
+    valtime = datetime.datetime.now(datetime.UTC)
     json_body = [
             {
                 "measurement": topic,
@@ -90,10 +104,15 @@ def save_to_db(topic: str, val: float):
         ]
     dbclient.write_points(json_body, time_precision='s')
 
-def on_connect(client, userdata, flags, rc):
-    print("Connected with result code " + str(rc))
+# PAHO MQTT V2 UPDATE: The on_connect callback signature has changed in v2. 
+# It now requires 'reason_code' (formerly 'rc') and 'properties'.
+def on_connect(client, userdata, flags, reason_code, properties):
+    print(f"Connected with result code {reason_code}")
+    # Subscribe inside on_connect so that if we lose connection and reconnect, 
+    # we automatically resubscribe to the topic.
     client.subscribe(topic_tree)
 
+# The on_message callback signature remains the same in v2
 def on_message(client, userdata, msg):
     global V1_8_0
     global V1_8_0_long
@@ -103,6 +122,7 @@ def on_message(client, userdata, msg):
     global V16_7_0_prev_timestamp
     global V1_8_0_prev_timestamp
     global V2_8_0_prev_timestamp
+    
     for topic in topics:
         if topic in msg.topic:
             message = json.loads(msg.payload.decode('ascii'))['message']
@@ -116,82 +136,86 @@ def on_message(client, userdata, msg):
             crc = sml.crc(bytes_message)
             crc = f'{crc:#x}'
             crc_int = int(crc, 16)
+            
             # compare received crc with calculated crc
             if c_int == crc_int:
                 V1_8_0_prev = V1_8_0
                 V2_8_0_prev = V2_8_0
                 V16_7_0_prev = V16_7_0
+                
                 # for short messages
                 V1_8_0 = extract_sml_reading(message, r'77070100010800ff[a-f0-9]*?621e520359', 16)
                 V2_8_0 = extract_sml_reading(message, r'77070100020800ff[a-f0-9]*?621e520359', 16)
                 V1_8_0_long = extract_sml_reading(message, r'77070100010800ff[a-f0-9]*?621e52fc59', 16)
                 V2_8_0_long = extract_sml_reading(message, r'77070100020800ff[a-f0-9]*?621e52fc59', 16)
                 V16_7_0 = extract_sml_reading(message, r'77070100100700ff[a-f0-9]*?621b52fe59', 16)
+                
                 # Convert to signed integers
                 if V16_7_0 is not None:
                     # 16.7.0 is an 8-byte value -> 64 bits
                     V16_7_0 = signed_conversion(V16_7_0, 64)
+                    
                 # Scale correctly
                 if V1_8_0_long is not None:
-                    V1_8_0 = V1_8_0_long/10000000.0
+                    V1_8_0 = V1_8_0_long / 10000000.0
                 if V2_8_0_long is not None:
-                    V2_8_0 = V2_8_0_long/10000000.0
+                    V2_8_0 = V2_8_0_long / 10000000.0
                 if V16_7_0 is not None:
-                    V16_7_0 = V16_7_0/100.0
-                #print(V1_8_0)
-                #print(V2_8_0)
-                #print(V16_7_0)
+                    V16_7_0 = V16_7_0 / 100.0
+                
+                # DATETIME UPDATE: Replaced all instances of datetime.datetime.utcnow() below
+                current_time = datetime.datetime.now(datetime.UTC)
+                
                 if V1_8_0 != V1_8_0_prev:
-                    if V1_8_0 is not None:
-                        if V1_8_0 < 99999:
-                            save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
-                            V1_8_0_prev_timestamp = datetime.datetime.utcnow()
-                            client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
-                            #print('1.8.0: ' + str(V1_8_0))
-                if V2_8_0 != V2_8_0_prev:
-                    if V2_8_0 is not None:
-                        if V2_8_0 < 99999:
-                            save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
-                            V2_8_0_prev_timestamp = datetime.datetime.utcnow()
-                            client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
-                            #print('2.8.0: ' + str(V2_8_0))
-                if V16_7_0 != V16_7_0_prev:
-                    if V16_7_0 is not None:
-                        if V16_7_0 < 99999:
-                            save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
-                            V16_7_0_prev_timestamp = datetime.datetime.utcnow()
-                            client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
-                            #print('16.7.0: ' + str(V16_7_0))
-                if V1_8_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=1):
-                    if V1_8_0 is not None:
-                        if V1_8_0 < 99999:
-                            save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
-                            V1_8_0_prev_timestamp = datetime.datetime.utcnow()
-                            client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
-                            #print('1.8.0: ' + str(V1_8_0))
-                if V2_8_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=1):
-                    if V2_8_0 is not None:
-                        if V2_8_0 < 99999:
-                            save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
-                            V2_8_0_prev_timestamp = datetime.datetime.utcnow()
-                            client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
-                            #print('2.8.0: ' + str(V2_8_0))
-                if V16_7_0_prev_timestamp < datetime.datetime.utcnow() - datetime.timedelta(minutes=1):
-                    if V16_7_0 is not None:
-                        if V16_7_0 < 99999:
-                            save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
-                            V16_7_0_prev_timestamp = datetime.datetime.utcnow()
-                            client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
-                            #print('16.7.0: ' + str(V16_7_0))
+                    if V1_8_0 is not None and V1_8_0 < 99999:
+                        save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
+                        V1_8_0_prev_timestamp = current_time
+                        client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
 
-client = paho.mqtt.client.Client()
+                if V2_8_0 != V2_8_0_prev:
+                    if V2_8_0 is not None and V2_8_0 < 99999:
+                        save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
+                        V2_8_0_prev_timestamp = current_time
+                        client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
+
+                if V16_7_0 != V16_7_0_prev:
+                    if V16_7_0 is not None and V16_7_0 < 99999:
+                        save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
+                        V16_7_0_prev_timestamp = current_time
+                        client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
+
+                # Periodic updates every 1 minute even if the value hasn't changed
+                if V1_8_0_prev_timestamp < current_time - datetime.timedelta(minutes=1):
+                    if V1_8_0 is not None and V1_8_0 < 99999:
+                        save_to_db('HOME/POWER/powermeter/1_8_0_float', float(V1_8_0))
+                        V1_8_0_prev_timestamp = current_time
+                        client.publish('HOME/powermeter/1_8_0', str(V1_8_0).encode('utf-8').strip())
+
+                if V2_8_0_prev_timestamp < current_time - datetime.timedelta(minutes=1):
+                    if V2_8_0 is not None and V2_8_0 < 99999:
+                        save_to_db('HOME/POWER/powermeter/2_8_0_float', float(V2_8_0))
+                        V2_8_0_prev_timestamp = current_time
+                        client.publish('HOME/powermeter/2_8_0', str(V2_8_0).encode('utf-8').strip())
+
+                if V16_7_0_prev_timestamp < current_time - datetime.timedelta(minutes=1):
+                    if V16_7_0 is not None and V16_7_0 < 99999:
+                        save_to_db('HOME/POWER/powermeter/16_7_0_float', float(V16_7_0))
+                        V16_7_0_prev_timestamp = current_time
+                        client.publish('HOME/powermeter/16_7_0', str(V16_7_0).encode('utf-8').strip())
+
+# ------------------------------------------------------------------------
+# MQTT CLIENT INITIALIZATION
+# ------------------------------------------------------------------------
+# PAHO MQTT V2 UPDATE: Explicitly declare CallbackAPIVersion.VERSION2
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 client.username_pw_set(username, password)
 client.on_connect = on_connect
 client.on_message = on_message
 
 try:
     client.connect("localhost", 1883, 60)
-except:
+except Exception as e:
+    print(f"Failed to connect: {e}")
     raise
 
 client.loop_forever()
