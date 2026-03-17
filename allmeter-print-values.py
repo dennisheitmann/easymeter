@@ -169,7 +169,7 @@ def process_datagram(logger: logging.Logger, reading: bytes, crc: bool = False, 
             if V2_8_0 != None:
                 print('2.8.0: ' + str(V2_8_0))
             if V16_7_0 != None:
-                print('1.7.0: ' + str(V16_7_0))
+                print('16.7.0: ' + str(V16_7_0))
             print(f"--- ------------ ---")
     else:
         logger.error("CRC mismatch")
